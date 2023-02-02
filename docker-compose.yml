@@ -1,0 +1,34 @@
+version: "3.7"
+
+services:
+  vmq:
+    image: ghcr.io/ysoftwareab/docker-vernemq:1.10.3-arm64
+    ports:
+      - 8080:8080
+      - 8888:8888
+      - 1883:1883
+    volumes:
+      - ./etc:/vernemq/etc/
+    networks:
+      - kuchat
+    environment:
+      DOCKER_VERNEMQ_ACCEPT_EULA: yes
+      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: on
+
+  kuchat-postgree:
+    container_name: kuchat-postgree
+    image: postgres:14.1-alpine
+    restart: always
+    networks:
+      - kuchat
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - ./db:/var/lib/postgresql/data
+
+networks:
+  kuchat:
+    driver: bridge

@@ -5,7 +5,7 @@
 -env ERL_MAX_PORTS 256000
 +A 64
 -setcookie vmq
--name VerneMQ@172.22.0.3
+-name VerneMQ@172.19.0.2
 +K true
 +W w
 -smp enable

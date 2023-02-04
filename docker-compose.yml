@@ -9,26 +9,7 @@ services:
       - 1883:1883
     volumes:
       - ./etc:/vernemq/etc/
-    networks:
-      - kuchat
     environment:
       DOCKER_VERNEMQ_ACCEPT_EULA: yes
-      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: on
 
-  kuchat-postgree:
-    container_name: kuchat-postgree
-    image: postgres:14.1-alpine
-    restart: always
-    networks:
-      - kuchat
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    ports:
-      - 5432:5432
-    volumes:
-      - ./db:/var/lib/postgresql/data
 
-networks:
-  kuchat:
-    driver: bridge

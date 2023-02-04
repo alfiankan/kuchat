@@ -1,63 +1,102 @@
 package main
 
 import (
-	"database/sql"
+	"bufio"
+	"context"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
+	"strings"
+	"time"
 
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/gojek/courier-go"
 )
 
-type UserRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type ChatMessage struct {
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	CreatedAt time.Time `json:"created_at"`
+	Data      string    `json:"data"`
 }
 
-func createUser(db *sql.DB, email, password string) (err error) {
+func recvMsg(chatClient *courier.Client, sender, receiver string) {
 
-	id := uuid.NewString()
+	cb := func(ctx context.Context, ps courier.PubSub, m *courier.Message) {
+		msg := new(ChatMessage)
+		if err := m.DecodePayload(msg); err != nil {
+			log.Println(err)
+		}
+		log.Println(msg.Data)
 
-	_, err = db.Exec(`
-	INSERT INTO vmq_auth_acl 
-	(mountpoint, client_id, username, password, publish_acl, subscribe_acl) 
-	VALUES ('', $1, $2, crypt($3 ,gen_salt('bf')), $4 ,$5)
-	`, id, email, password, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`)
-
-	if err != nil {
-		log.Println(err)
-		return
 	}
 
-	return
+	err := chatClient.SubscribeMultiple(context.Background(), map[string]courier.QOSLevel{
+		fmt.Sprintf("/chats/%s/with/%s", sender, receiver): courier.QOSTwo,
+		fmt.Sprintf("/chats/%s/with/%s", receiver, sender): courier.QOSTwo,
+	}, cb)
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(1000 * time.Hour)
+}
+
+func sendMsg(chatClient *courier.Client, topic string, loginUser, secondUser string) {
+
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for scanner.Scan() {
+		fmt.Print(" > ")
+		msg := scanner.Text()
+
+		err := chatClient.Publish(context.Background(), topic, ChatMessage{
+			From: loginUser,
+			To:   secondUser,
+			Data: msg,
+		}, courier.QOSTwo)
+		if err != nil {
+			log.Println(err)
+		}
+
+	}
+
 }
 
 func main() {
-	e := echo.New()
 
-	db, err := NewPgConnection("host=127.0.0.1 user=postgres password=postgres dbname=kuchat port=5432 sslmode=disable TimeZone=Asia/Jakarta")
+	// connecting to broker
+
+	credential := strings.Split(os.Args[1], ":")
+	loginUser := credential[0]
+	loginPassword := credential[1]
+	secondUser := os.Args[2]
+	clientId := credential[2]
+
+	chatClient, err := courier.NewClient(
+		courier.WithAddress("127.0.0.1", 1883),
+		courier.WithClientID(clientId),
+		courier.WithUsername(loginUser),
+		courier.WithPassword(loginPassword),
+	)
+
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	e.POST("/register", func(c echo.Context) error {
+	if err := chatClient.Start(); err != nil {
+		panic(err)
+	}
 
-		var reqBody UserRequest
+	fmt.Println("connected", chatClient.IsConnected())
 
-		if err := c.Bind(&reqBody); err != nil {
-			log.Println(err)
-			return c.String(http.StatusBadRequest, "Gagal")
-		}
-		log.Println(reqBody)
+	if os.Args[3] == "send" {
+		topic := fmt.Sprintf("/chats/%s/with/%s", loginUser, secondUser)
+		fmt.Println(topic)
 
-		if err := createUser(db, reqBody.Email, reqBody.Password); err != nil {
-			log.Println(err)
-			return c.String(http.StatusBadRequest, "Gagal")
-		}
-
-		return c.String(http.StatusOK, "Registered")
-	})
-
-	e.Logger.Fatal(e.Start(":1323"))
+		sendMsg(chatClient, topic, loginUser, secondUser)
+	} else {
+		topic := fmt.Sprintf("/chats/%s/%s", secondUser, loginUser)
+		fmt.Println(topic)
+		recvMsg(chatClient, loginUser, secondUser)
+	}
 
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -14,32 +15,20 @@ type UserRequest struct {
 }
 
 func createUser(db *sql.DB, email, password string) (err error) {
-	tx, err := db.Begin()
+
+	id := uuid.NewString()
+
+	_, err = db.Exec(`
+	INSERT INTO vmq_auth_acl 
+	(mountpoint, client_id, username, password, publish_acl, subscribe_acl) 
+	VALUES ('', $1, $2, crypt($3 ,gen_salt('bf')), $4 ,$5)
+	`, id, email, password, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`)
+
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Println("registering", email, password)
-	row := tx.QueryRow("INSERT INTO users (email, password) VALUES ($1, crypt($2, gen_salt('bf')) ) returning id, password", email, password)
 
-	var id, passwd string
-	if err := row.Scan(&id, &passwd); err != nil {
-		log.Println(err)
-		tx.Rollback()
-	}
-
-	if _, err = tx.Exec(`
-	INSERT INTO vmq_auth_acl 
-	(mountpoint, client_id, username, password, publish_acl, subscribe_acl) 
-	VALUES ('', $1, $2, $3, $4, $5)
-	`, id, email, passwd, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`, `[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]`); err != nil {
-		tx.Rollback()
-		return
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Println(err)
-	}
 	return
 }
 

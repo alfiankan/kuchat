@@ -38,5 +38,13 @@ services:
       - start ui
       - subscribe to topic `/chats/<session_id>/<user_email>`
       - send to topic `/chats/<session_id>/<destination_email>`
+      
+## Demo
+
+
+
+https://user-images.githubusercontent.com/40946917/216800713-697c51b2-3b65-469b-9220-f559f4c07ac1.mov
+
+
 
 
